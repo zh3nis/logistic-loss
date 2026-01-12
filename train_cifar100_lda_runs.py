@@ -48,10 +48,10 @@ class Encoder(nn.Module):
 
 
 class DeepLDA(nn.Module):
-    def __init__(self, num_classes, dim, covariance_type="spherical"):
+    def __init__(self, num_classes, dim):
         super().__init__()
         self.encoder = Encoder(dim)
-        self.head = LDAHead(num_classes, dim, covariance_type=covariance_type)
+        self.head = LDAHead(num_classes, dim)
 
     def forward(self, x):
         z = self.encoder(x)
@@ -133,11 +133,8 @@ def train_one_run(
     lr,
     dim,
     num_classes,
-    covariance_type,
 ):
-    model = DeepLDA(num_classes=num_classes, dim=dim, covariance_type=covariance_type).to(
-        device
-    )
+    model = DeepLDA(num_classes=num_classes, dim=dim).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr)
 
     train_acc = []
@@ -145,7 +142,7 @@ def train_one_run(
 
     for epoch in range(1, epochs + 1):
         model.train()
-        acc_sum = n_sum = 0
+        loss_sum = acc_sum = n_sum = 0
         for x, y in train_ld:
             x, y = x.to(device), y.to(device)
             logits = model(x)
@@ -157,12 +154,14 @@ def train_one_run(
                 pred = logits.argmax(1)
                 acc_sum += (pred == y).sum().item()
                 n_sum += y.size(0)
+                loss_sum += loss.item() * y.size(0)
         tr_acc = acc_sum / n_sum
         te_acc = evaluate(model, test_ld, device)
         train_acc.append(float(tr_acc))
         test_acc.append(float(te_acc))
         print(
-            f"[{loss_name} {epoch:03d}] train acc={tr_acc:.4f} | test acc={te_acc:.4f}"
+            f"[{loss_name} {epoch:03d}] train loss={loss_sum/n_sum:.4f} "
+            f"acc={tr_acc:.4f} | test acc={te_acc:.4f}"
         )
 
     return train_acc, test_acc
@@ -183,7 +182,6 @@ def run_experiments(args):
             "test_batch_size": args.test_batch_size,
             "num_classes": args.num_classes,
             "embedding_dim": args.dim,
-            "covariance_type": args.covariance_type,
             "optimizer": "Adam",
             "lr": args.lr,
             "lambda_reg": args.lambda_reg,
@@ -215,7 +213,6 @@ def run_experiments(args):
                 lr=args.lr,
                 dim=args.dim,
                 num_classes=args.num_classes,
-                covariance_type=args.covariance_type,
             )
             runs.append(
                 {
@@ -247,10 +244,9 @@ def parse_args():
     parser.add_argument("--test-batch-size", type=int, default=1024)
     parser.add_argument("--num-workers", type=int, default=4)
     parser.add_argument("--num-classes", type=int, default=100)
-    parser.add_argument("--dim", type=int, default=9)
-    parser.add_argument("--covariance-type", default="spherical")
+    parser.add_argument("--dim", type=int, default=99)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--lambda-reg", type=float, default=0.01)
+    parser.add_argument("--lambda-reg", type=float, default=1.0)
     parser.add_argument("--seed-base", type=int, default=1234)
     parser.add_argument("--deterministic", action="store_true")
     return parser.parse_args()
